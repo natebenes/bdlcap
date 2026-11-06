@@ -1,0 +1,146 @@
+# golangci-lint v2 configuration. Run it with: golangci-lint run
+#
+# Every exclusion below is narrow and says why. If one stops being true,
+# delete it rather than widening it.
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  # The standard set is errcheck, govet, ineffassign, staticcheck, unused.
+  default: standard
+  enable:
+    - bodyclose
+    - errorlint
+    - gocritic
+    - gosec
+    - misspell
+    - nilerr
+    - predeclared
+    - revive
+    - unconvert
+    - usetesting
+
+  settings:
+    errcheck:
+      check-type-assertions: true
+    govet:
+      enable-all: true
+      disable:
+        # A micro-optimization that would reorder fields chosen to read in
+        # the order Annex YY presents them.
+        - fieldalignment
+        # "if err := f(); err != nil" is idiomatic, not a mistake.
+        - shadow
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - style
+        - performance
+      disabled-checks:
+        # Both fight the existing style rather than finding defects.
+        - ifElseChain
+        - singleCaseSwitch
+        # bdc.Config and tls.Certificate are passed by value deliberately;
+        # they are configuration, copied once per dial.
+        - hugeParam
+        # (value, offset, error) decode helpers read fine unnamed.
+        - unnamedResult
+        # Encode writes one append per wire field, in the order Annex YY
+        # lists them. Merging them would obscure the layout.
+        - appendCombine
+    gosec:
+      excludes:
+        # Conversions between int and fixed-width types are the whole job of
+        # a wire-format codec: every one of them is a deliberate narrowing
+        # into a field whose width the protocol fixes. G115 cannot tell those
+        # from accidents, and flags ~20 of them.
+        - G115
+    misspell:
+      locale: US
+    revive:
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: error-naming
+        - name: error-return
+        - name: error-strings
+        - name: errorf
+        - name: increment-decrement
+        - name: indent-error-flow
+        - name: range
+        - name: receiver-naming
+        - name: redefines-builtin-id
+        - name: superfluous-else
+        - name: time-naming
+        - name: unexported-return
+        - name: unreachable-code
+        - name: unused-parameter
+        - name: var-declaration
+        - name: var-naming
+    staticcheck:
+      checks:
+        - all
+
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      # Test code gets to be blunt about errors and paths it does not care
+      # about.
+      - path: _test\.go
+        linters:
+          - errcheck
+          - gocritic
+          - gosec
+
+      # Annex YY leaves the endpoint's certificate as a local matter, so
+      # ClientTLSConfig sets InsecureSkipVerify to pin a fingerprint in
+      # VerifyConnection, or when the operator explicitly passes --insecure.
+      - path: internal/pki/pki\.go
+        linters:
+          - gosec
+        text: "G402|G123"
+
+      # coder/websocket's Dial returns the handshake response for its status
+      # and headers; on a successful upgrade there is no body to close.
+      - path: internal/bdc/client\.go
+        linters:
+          - bodyclose
+
+      # Recv loops so that a future message class can be consumed and waited
+      # past; today every path returns on the first pass.
+      - path: internal/bdc/client\.go
+        linters:
+          - staticcheck
+        text: "SA4004"
+
+      # A cancelled context is a clean stop, not a failure: "if ctx.Err() !=
+      # nil { return nil }" is the shutdown path, not a swallowed error.
+      - path: cmd/bdlcap/capture\.go
+        linters:
+          - nilerr
+
+      # strconv.ParseUint(arg, 0, 32) has already bounded the value to 32
+      # bits, so the comparison cannot truncate.
+      - path: internal/wire/filterexpr\.go
+        linters:
+          - gocritic
+        text: "truncateCmp"
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/natebenes/bdlcap

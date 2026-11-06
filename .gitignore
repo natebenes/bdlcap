@@ -1,0 +1,8 @@
+# Build output.
+/dist/
+/bdlcap
+/bdlcap.exe
+
+# Captures and coverage written by the dev loop in README.md.
+*.pcapng
+coverage.out

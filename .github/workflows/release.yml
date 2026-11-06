@@ -1,0 +1,46 @@
+# Pushing a vX.Y.Z tag publishes a GitHub release: binaries for the six
+# desktop targets Wireshark runs on, each archive carrying the bdc.lua
+# dissector, plus SHA256 checksums and a generated changelog.
+#
+#   git tag -a v0.11.0 -m "v0.11.0" && git push origin v0.11.0
+#
+# The build itself is described by .goreleaser.yaml.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: release
+    runs-on: ubuntu-latest
+    permissions:
+      # Creating the release and uploading its assets.
+      contents: write
+    steps:
+      # Full history and tags: GoReleaser reads the tag for the version and
+      # the log for the changelog, and a shallow clone yields a wrong one.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: stable
+          check-latest: true
+
+      # The tag should only ship something that passes the same bar as main.
+      - name: Test
+        run: go test ./... -race
+
+      - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          version: v2.18.0
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

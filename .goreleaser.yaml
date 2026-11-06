@@ -1,0 +1,110 @@
+# GoReleaser builds the tagged releases. See .github/workflows/release.yml.
+#
+# Try it without tagging anything:  goreleaser release --snapshot --clean
+version: 2
+
+project_name: bdlcap
+
+before:
+  hooks:
+    - go mod verify
+
+builds:
+  - id: bdlcap
+    main: ./cmd/bdlcap
+    binary: bdlcap
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+    # Reproducible builds: stamp the binary with the commit time, not the
+    # build time.
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - id: bdlcap
+    ids:
+      - bdlcap
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    # bdc.lua is not optional: captures use a private-use link type
+    # (LINKTYPE_USER15), so without the dissector Wireshark cannot read the
+    # files this binary writes.
+    files:
+      - src: wireshark/bdc.lua
+        dst: bdc.lua
+      - README.md
+      - LICENSE
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot-{{ .ShortCommit }}"
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+      - "^Merge "
+
+release:
+  footer: |
+    ## Installing
+
+    Each archive holds the `bdlcap` extcap program and the `bdc.lua` dissector.
+    Both are needed: `bdlcap` writes the capture, `bdc.lua` decodes it.
+
+    Linux:
+
+    ```sh
+    tar xzf bdlcap_VERSION_linux_ARCH.tar.gz
+    install -D bdlcap  ~/.local/lib/wireshark/extcap/bdlcap
+    install -D bdc.lua ~/.local/lib/wireshark/plugins/bdc.lua
+    ```
+
+    macOS:
+
+    ```sh
+    tar xzf bdlcap_VERSION_darwin_ARCH.tar.gz
+    mkdir -p ~/.local/lib/wireshark/extcap ~/.local/lib/wireshark/plugins
+    install bdlcap ~/.local/lib/wireshark/extcap/bdlcap
+    install bdc.lua ~/.local/lib/wireshark/plugins/bdc.lua
+    ```
+
+    Windows: unzip and copy `bdlcap.exe` to `%APPDATA%\Wireshark\extcap\` and
+    `bdc.lua` to `%APPDATA%\Wireshark\plugins\`.
+
+    These binaries are not code-signed, so macOS quarantines them on download:
+
+    ```sh
+    xattr -d com.apple.quarantine bdlcap
+    ```
+
+    "BACnet Diagnostic Connection" then appears in Wireshark's interface list.
+
+    Verify a download against `checksums.txt`:
+
+    ```sh
+    sha256sum -c checksums.txt --ignore-missing
+    ```
